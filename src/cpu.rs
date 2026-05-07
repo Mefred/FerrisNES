@@ -1,58 +1,25 @@
 use std::fs;
 
-type Instr = fn(&mut CPU);
-
 pub struct CPU {
-    pub program_counter: u16,
-    pub register_a: u8,
-    pub register_x: u8,
-    pub register_y: u8,
-
-    ram: Vec<u8>,
+    program_counter: u16,
+    register_a: u8,
+    register_x: u8,
+    register_y: u8,
+    ram: [u8; 0x800],
     rom: [u8; 0x8000],
-
-    instructions: [Instr; 256],
 }
 
 impl CPU {
     pub fn new() -> Self {
-        let mut cpu = Self {
+        Self {
             program_counter: 0,
             register_a: 0,
             register_x: 0,
             register_y: 0,
-            ram: vec![0; 0x800],
+            ram: [0; 0x800],
             rom: [0; 0x8000],
-            instructions: [CPU::unimplemented; 256],
-        };
-
-        cpu.bind_instruction();
-        cpu
+        }
     }
-
-    fn unimplemented(_cpu: &mut CPU) {
-        panic!("unimplemented opcode");
-    }
-
-    // -------------------------
-    // Instruction table setup
-    // -------------------------
-
-    fn bind_instruction(&mut self) {
-        self.instructions[0xA9] = Self::lda_immediate;
-        self.instructions[0xA5] = Self::lda_zero_page;
-        self.instructions[0xAD] = Self::lda_absolute;
-
-        self.instructions[0xA2] = Self::ldx_immediate;
-        self.instructions[0xA0] = Self::ldy_immediate;
-
-        self.instructions[0x85] = Self::sta_zero_page;
-        self.instructions[0x8D] = Self::sta_absolute;
-    }
-
-    // -------------------------
-    // ROM loading
-    // -------------------------
 
     pub fn load_rom(&mut self, path: &str) {
         let rom_file = fs::read(path).unwrap();
@@ -60,9 +27,9 @@ impl CPU {
         self.rom.copy_from_slice(&rom_file[0x10..0x10 + 0x8000]);
     }
 
-    // -------------------------
-    // Memory system
-    // -------------------------
+    pub fn read_debug(&self, address: u16) -> u8 {
+        self.read(address)
+    }
 
     fn read(&self, address: u16) -> u8 {
         if address < 0x800 {
@@ -80,19 +47,11 @@ impl CPU {
         }
     }
 
-    // -------------------------
-    // Helpers
-    // -------------------------
-
     fn fetch_byte(&mut self) -> u8 {
         let byte = self.read(self.program_counter);
         self.program_counter += 1;
         byte
     }
-
-    // -------------------------
-    // CPU control
-    // -------------------------
 
     pub fn reset(&mut self) {
         let pcl = self.read(0xFFFC);
@@ -103,49 +62,92 @@ impl CPU {
 
     pub fn run(&mut self) {
         loop {
-            let opcode = self.fetch_byte();
-            (self.instructions[opcode as usize])(self);
+            let opcode = self.read(self.program_counter);
+            self.program_counter += 1;
+
+            match opcode {
+                0x02 => break,
+
+                0xA0 => self.ldy_immediate(),
+
+                0xA2 => self.ldx_immediate(),
+
+                0xA9 => self.lda_immediate(),
+                0xA5 => self.lda_zero_page(),
+                0xAD => self.lda_absolute(),
+
+                0x85 => self.sta_zero_page(),
+                0x8D => self.sta_absolute(),
+
+                0x86 => self.stx_zero_page(),
+                0x8E => self.stx_absolute(),
+
+                0x84 => self.sty_zero_page(),
+                0x8C => self.sty_absolute(),
+
+                _ => todo!(),
+            }
         }
     }
 
-    // -------------------------
-    // Instructions
-    // -------------------------
-
-    fn lda_immediate(cpu: &mut CPU) {
-        cpu.register_a = cpu.fetch_byte();
+    fn ldy_immediate(&mut self) {
+        self.register_y = self.read(self.program_counter);
+        self.program_counter += 1;
     }
 
-    fn lda_zero_page(cpu: &mut CPU) {
-        let addr = cpu.fetch_byte() as u16;
-        cpu.register_a = cpu.read(addr);
+    fn ldx_immediate(&mut self) {
+        self.register_x = self.read(self.program_counter);
+        self.program_counter += 1;
     }
 
-    fn lda_absolute(cpu: &mut CPU) {
-        let low = cpu.fetch_byte() as u16;
-        let high = cpu.fetch_byte() as u16;
+    fn lda_immediate(&mut self) {
+        self.register_a = self.fetch_byte();
+    }
+
+    fn lda_zero_page(&mut self) {
+        let addr = self.fetch_byte() as u16;
+        self.register_a = self.read(addr);
+    }
+
+    fn lda_absolute(&mut self) {
+        let low = self.fetch_byte() as u16;
+        let high = self.fetch_byte() as u16;
 
         let addr = (high << 8) | low;
 
-        cpu.register_a = cpu.read(addr);
+        self.register_a = self.read(addr);
     }
 
-    fn ldx_immediate(cpu: &mut CPU) {
-        cpu.register_x = cpu.fetch_byte();
+    fn sta_zero_page(&mut self) {
+        let addr = self.fetch_byte() as u16;
+        self.write(addr, self.register_a);
     }
 
-    fn ldy_immediate(cpu: &mut CPU) {
-        cpu.register_y = cpu.fetch_byte();
+    fn sta_absolute(&mut self) {
+        let address_low = self.fetch_byte() as u16;
+        let address_high = self.fetch_byte() as u16;
+        self.write(address_high * 256 + address_low, self.register_a)
     }
 
-    fn sta_zero_page(cpu: &mut CPU) {
-        let addr = cpu.fetch_byte() as u16;
-        cpu.write(addr, cpu.register_a);
+    fn stx_zero_page(&mut self) {
+        let addr = self.fetch_byte() as u16;
+        self.write(addr, self.register_x);
     }
 
-    fn sta_absolute(cpu: &mut CPU) {
-        let address_low = cpu.fetch_byte() as u16;
-        let address_high = cpu.fetch_byte() as u16;
-        cpu.write(address_high * 256 + address_low, cpu.register_a);
+    fn stx_absolute(&mut self) {
+        let address_low = self.fetch_byte() as u16;
+        let address_high = self.fetch_byte() as u16;
+        self.write(address_high * 256 + address_low, self.register_x)
+    }
+
+    fn sty_zero_page(&mut self) {
+        let addr = self.fetch_byte() as u16;
+        self.write(addr, self.register_y);
+    }
+
+    fn sty_absolute(&mut self) {
+        let address_low = self.fetch_byte() as u16;
+        let address_high = self.fetch_byte() as u16;
+        self.write(address_high * 256 + address_low, self.register_y)
     }
 }
