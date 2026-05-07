@@ -7,6 +7,13 @@ pub struct CPU {
     register_y: u8,
     ram: [u8; 0x800],
     rom: [u8; 0x8000],
+    flag_carry: bool,
+    flag_zero: bool,
+    flag_interrupt_disable: bool,
+    dlag_decimal: bool,
+    flag_overflow: bool,
+    flag_negative: bool,
+    cycles: i32,
 }
 
 impl CPU {
@@ -18,6 +25,13 @@ impl CPU {
             register_y: 0,
             ram: [0; 0x800],
             rom: [0; 0x8000],
+            flag_carry: false,
+            flag_zero: false,
+            flag_interrupt_disable: false,
+            dlag_decimal: false,
+            flag_overflow: false,
+            flag_negative: false,
+            cycles: 0,
         }
     }
 
@@ -32,8 +46,8 @@ impl CPU {
     }
 
     fn read(&self, address: u16) -> u8 {
-        if address < 0x800 {
-            return self.ram[address as usize];
+        if address <= 0x1FFF {
+            return self.ram[(address & 0x07FF) as usize];
         }
         if address >= 0x8000 {
             return self.rom[(address - 0x8000) as usize];
@@ -42,14 +56,14 @@ impl CPU {
     }
 
     fn write(&mut self, address: u16, data: u8) {
-        if address < 0x800 {
-            self.ram[address as usize] = data;
+        if address <= 0x1FFF {
+            self.ram[(address & 0x07FF) as usize] = data;
         }
     }
 
     fn fetch_byte(&mut self) -> u8 {
         let byte = self.read(self.program_counter);
-        self.program_counter += 1;
+        self.program_counter = self.program_counter.wrapping_add(1);
         byte
     }
 
@@ -57,7 +71,8 @@ impl CPU {
         let pcl = self.read(0xFFFC);
         let pch = self.read(0xFFFD);
 
-        self.program_counter = ((pch as u16) << 8) | (pcl as u16)
+        self.program_counter = ((pch as u16) << 8) | (pcl as u16);
+        self.flag_interrupt_disable = true;
     }
 
     pub fn run(&mut self) {
@@ -91,22 +106,37 @@ impl CPU {
     }
 
     fn ldy_immediate(&mut self) {
-        self.register_y = self.read(self.program_counter);
-        self.program_counter += 1;
+        self.register_y = self.fetch_byte();
+
+        self.cycles = 2;
+
+        self.flag_zero = self.register_y == 0;
+        self.flag_negative = self.register_y > 127;
     }
 
     fn ldx_immediate(&mut self) {
-        self.register_x = self.read(self.program_counter);
-        self.program_counter += 1;
+        self.register_x = self.fetch_byte();
+
+        self.cycles = 2;
+
+        self.flag_zero = self.register_x == 0;
+        self.flag_negative = self.register_x > 127;
     }
 
     fn lda_immediate(&mut self) {
         self.register_a = self.fetch_byte();
+
+        self.cycles = 2;
+
+        self.flag_zero = self.register_a == 0;
+        self.flag_negative = self.register_a > 127;
     }
 
     fn lda_zero_page(&mut self) {
         let addr = self.fetch_byte() as u16;
         self.register_a = self.read(addr);
+
+        self.cycles = 3;
     }
 
     fn lda_absolute(&mut self) {
@@ -116,38 +146,52 @@ impl CPU {
         let addr = (high << 8) | low;
 
         self.register_a = self.read(addr);
+
+        self.cycles = 4;
     }
 
     fn sta_zero_page(&mut self) {
         let addr = self.fetch_byte() as u16;
         self.write(addr, self.register_a);
+
+        self.cycles = 3;
     }
 
     fn sta_absolute(&mut self) {
         let address_low = self.fetch_byte() as u16;
         let address_high = self.fetch_byte() as u16;
-        self.write(address_high * 256 + address_low, self.register_a)
+        self.write(address_high * 256 + address_low, self.register_a);
+
+        self.cycles = 4;
     }
 
     fn stx_zero_page(&mut self) {
         let addr = self.fetch_byte() as u16;
         self.write(addr, self.register_x);
+
+        self.cycles = 3;
     }
 
     fn stx_absolute(&mut self) {
         let address_low = self.fetch_byte() as u16;
         let address_high = self.fetch_byte() as u16;
-        self.write(address_high * 256 + address_low, self.register_x)
+        self.write(address_high * 256 + address_low, self.register_x);
+
+        self.cycles = 4;
     }
 
     fn sty_zero_page(&mut self) {
         let addr = self.fetch_byte() as u16;
         self.write(addr, self.register_y);
+
+        self.cycles = 3;
     }
 
     fn sty_absolute(&mut self) {
         let address_low = self.fetch_byte() as u16;
         let address_high = self.fetch_byte() as u16;
-        self.write(address_high * 256 + address_low, self.register_y)
+        self.write(address_high * 256 + address_low, self.register_y);
+
+        self.cycles = 4;
     }
 }
