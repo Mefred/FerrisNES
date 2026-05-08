@@ -10,10 +10,11 @@ pub struct CPU {
     flag_carry: bool,
     flag_zero: bool,
     flag_interrupt_disable: bool,
-    dlag_decimal: bool,
+    flag_decimal: bool,
     flag_overflow: bool,
     flag_negative: bool,
     cycles: i32,
+    stack_pointer: u8,
 }
 
 impl CPU {
@@ -28,10 +29,11 @@ impl CPU {
             flag_carry: false,
             flag_zero: false,
             flag_interrupt_disable: false,
-            dlag_decimal: false,
+            flag_decimal: false,
             flag_overflow: false,
             flag_negative: false,
             cycles: 0,
+            stack_pointer: 0,
         }
     }
 
@@ -61,6 +63,16 @@ impl CPU {
         }
     }
 
+    fn push(&mut self, value: u8) {
+        self.write(0x0100 + self.stack_pointer as u16, value);
+        self.stack_pointer = self.stack_pointer.wrapping_sub(1);
+    }
+
+    fn pull(&mut self) -> u8 {
+        self.stack_pointer = self.stack_pointer.wrapping_add(1);
+        self.read(0x0100 + self.stack_pointer as u16)
+    }
+
     fn fetch_byte(&mut self) -> u8 {
         let byte = self.read(self.program_counter);
         self.program_counter = self.program_counter.wrapping_add(1);
@@ -73,6 +85,7 @@ impl CPU {
 
         self.program_counter = ((pch as u16) << 8) | (pcl as u16);
         self.flag_interrupt_disable = true;
+        self.stack_pointer = 0xFD;
     }
 
     pub fn run(&mut self) {
@@ -108,6 +121,12 @@ impl CPU {
                 0xB0 => self.bcs(),
                 0xD0 => self.bne(),
                 0xF0 => self.beq(),
+
+                0x48 => self.pha(),
+                0x68 => self.pla(),
+
+                0x20 => self.jsr(),
+                0x60 => self.rts(),
 
                 _ => todo!(),
             }
@@ -282,5 +301,37 @@ impl CPU {
         } else {
             self.cycles = 2
         }
+    }
+
+    fn pha(&mut self) {
+        self.push(self.register_a);
+
+        self.cycles = 3;
+    }
+
+    fn pla(&mut self) {
+        self.register_a = self.pull();
+
+        self.flag_zero = self.register_a == 0;
+        self.flag_negative = self.register_a >= 0x80;
+
+        self.cycles = 4
+    }
+
+    fn jsr(&mut self) {
+        let low = self.fetch_byte() as u16;
+        let high = self.read(self.program_counter) as u16;
+        self.push((self.program_counter / 256) as u8);
+        self.push(self.program_counter as u8);
+        self.program_counter = high * 256 + low;
+        self.cycles = 6;
+    }
+
+    fn rts(&mut self) {
+        let low = self.pull() as u16;
+        let high = self.pull() as u16;
+        self.program_counter = high * 256 + low;
+        self.program_counter += 1;
+        self.cycles = 6;
     }
 }
