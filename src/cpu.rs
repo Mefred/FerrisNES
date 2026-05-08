@@ -100,6 +100,15 @@ impl CPU {
                 0x84 => self.sty_zero_page(),
                 0x8C => self.sty_absolute(),
 
+                0x10 => self.bpl(),
+                0x30 => self.bmi(),
+                0x50 => self.bvc(),
+                0x70 => self.bvs(),
+                0x90 => self.bcc(),
+                0xB0 => self.bcs(),
+                0xD0 => self.bne(),
+                0xF0 => self.beq(),
+
                 _ => todo!(),
             }
         }
@@ -193,5 +202,85 @@ impl CPU {
         self.write(address_high * 256 + address_low, self.register_y);
 
         self.cycles = 4;
+    }
+
+    fn bpl(&mut self) {
+        let offset = self.fetch_byte() as i8;
+        if !self.flag_negative {
+            self.program_counter = self.program_counter.wrapping_add(offset as i16 as u16);
+            self.cycles = 3;
+        } else {
+            self.cycles = 2
+        }
+    }
+
+    fn bmi(&mut self) {
+        let offset = self.fetch_byte() as i8;
+        if self.flag_negative {
+            self.program_counter = self.program_counter.wrapping_add(offset as i16 as u16);
+            self.cycles = 3;
+        } else {
+            self.cycles = 2
+        }
+    }
+
+    fn bvc(&mut self) {
+        let offset = self.fetch_byte() as i8;
+        if !self.flag_overflow {
+            self.program_counter = self.program_counter.wrapping_add(offset as i16 as u16);
+            self.cycles = 3;
+        } else {
+            self.cycles = 2
+        }
+    }
+
+    fn bvs(&mut self) {
+        let offset = self.fetch_byte() as i8;
+        if self.flag_overflow {
+            self.program_counter = self.program_counter.wrapping_add(offset as i16 as u16);
+            self.cycles = 3;
+        } else {
+            self.cycles = 2
+        }
+    }
+
+    fn bcc(&mut self) {
+        let offset = self.fetch_byte() as i8;
+        if !self.flag_carry {
+            self.program_counter = self.program_counter.wrapping_add(offset as i16 as u16);
+            self.cycles = 3;
+        } else {
+            self.cycles = 2
+        }
+    }
+
+    fn bcs(&mut self) {
+        let offset = self.fetch_byte() as i8;
+        if self.flag_carry {
+            self.program_counter = self.program_counter.wrapping_add(offset as i16 as u16);
+            self.cycles = 3;
+        } else {
+            self.cycles = 2
+        }
+    }
+
+    fn bne(&mut self) {
+        let offset = self.fetch_byte() as i8;
+        if !self.flag_zero {
+            self.program_counter = self.program_counter.wrapping_add(offset as i16 as u16);
+            self.cycles = 3;
+        } else {
+            self.cycles = 2
+        }
+    }
+
+    fn beq(&mut self) {
+        let offset = self.fetch_byte() as i8;
+        if self.flag_zero {
+            self.program_counter = self.program_counter.wrapping_add(offset as i16 as u16);
+            self.cycles = 3;
+        } else {
+            self.cycles = 2
+        }
     }
 }

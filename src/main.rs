@@ -4,7 +4,7 @@ use cpu::CPU;
 
 fn main() {
     let mut cpu = CPU::new();
-    cpu.load_rom("2_ReadWrite.nes");
+    cpu.load_rom("roms/3_Branches.nes");
     cpu.reset();
     cpu.run();
     println!("RAM[0000] = {:02X}", cpu.read_debug(0x0000));
