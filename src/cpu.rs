@@ -18,6 +18,31 @@ pub struct CPU {
     address_bus: u16,
 }
 
+const OPCODE_NAMES: [&str; 256] = [
+    "BRK", "ORA", "HLT", "SLO", "NOP", "ORA", "ASL", "SLO", "PHP", "ORA", "ASL", "ANC", "NOP",
+    "ORA", "ASL", "SLO", "BPL", "ORA", "HLT", "SLO", "NOP", "ORA", "ASL", "SLO", "CLC", "ORA",
+    "NOP", "SLO", "NOP", "ORA", "ASL", "SLO", "JSR", "AND", "HLT", "RLA", "BIT", "AND", "ROL",
+    "RLA", "PLP", "AND", "ROL", "ANC", "BIT", "AND", "ROL", "RLA", "BMI", "AND", "HLT", "RLA",
+    "NOP", "AND", "ROL", "RLA", "SEC", "AND", "NOP", "RLA", "NOP", "AND", "ROL", "RLA", "RTI",
+    "EOR", "HLT", "SRE", "NOP", "EOR", "LSR", "SRE", "PHA", "EOR", "LSR", "ALR", "JMP", "EOR",
+    "LSR", "SRE", "BVC", "EOR", "HLT", "SRE", "NOP", "EOR", "LSR", "SRE", "CLI", "EOR", "NOP",
+    "SRE", "NOP", "EOR", "LSR", "SRE", "RTS", "ADC", "HLT", "RRA", "NOP", "ADC", "ROR", "RRA",
+    "PLA", "ADC", "ROR", "ARR", "JMP", "ADC", "ROR", "RRA", "BVS", "ADC", "HLT", "RRA", "NOP",
+    "ADC", "ROR", "RRA", "SEI", "ADC", "NOP", "RRA", "NOP", "ADC", "ROR", "RRA", "NOP", "STA",
+    "NOP", "SAX", "STY", "STA", "STX", "SAX", "DEY", "NOP", "TXA", "ANE", "STY", "STA", "STX",
+    "SAX", "BCC", "STA", "HLT", "SHA", "STY", "STA", "STX", "SAX", "TYA", "STA", "TXS", "SHS",
+    "SHY", "STA", "SHX", "SHA", "LDY", "LDA", "LDX", "LAX", "LDY", "LDA", "LDX", "LAX", "TAY",
+    "LDA", "TAX", "LXA", "LDY", "LDA", "LDX", "LAX", "BCS", "LDA", "HLT", "LAX", "LDY", "LDA",
+    "LDX", "LAX", "CLV", "LDA", "TSX", "LAE", "LDY", "LDA", "LDX", "LAX", "CPY", "CMP", "NOP",
+    "DCP", "CPY", "CMP", "DEC", "DCP", "INY", "CMP", "DEX", "AXS", "CPY", "CMP", "DEC", "DCP",
+    "BNE", "CMP", "HLT", "DCP", "NOP", "CMP", "DEC", "DPC", "CLD", "CMP", "NOP", "DCP", "NOP",
+    "CMP", "DEC", "DCP", "CPX", "SBC", "NOP", "ISC", "CPX", "SBC", "INC", "ISC", "INX", "SBC",
+    "NOP", "SBC", "CPX", "SBC", "INC", "ISC", "BEQ", "SBC", "HLT", "ISC", "NOP", "SBC", "INC",
+    "ISC", "SED", "SBC", "NOP", "ISC", "NOP", "SBC", "INC", "ISC",
+];
+
+const LOGGING: bool = false;
+
 impl CPU {
     pub fn new() -> Self {
         Self {
@@ -37,6 +62,48 @@ impl CPU {
             stack_pointer: 0,
             address_bus: 0,
         }
+    }
+
+    fn trace_logger(&self, opcode: u8) {
+        if !LOGGING {
+            return;
+        }
+
+        let pc = self.program_counter;
+
+        let op = self.read_debug(pc);
+        let b1 = self.read_debug(pc.wrapping_add(1));
+        let b2 = self.read_debug(pc.wrapping_add(2));
+
+        let opcode_name = OPCODE_NAMES[opcode as usize];
+
+        let flags = format!(
+            "{}{}{}{}{}{}",
+            if self.flag_negative { "N" } else { "." },
+            if self.flag_overflow { "V" } else { "." },
+            if self.flag_decimal { "D" } else { "." },
+            if self.flag_interrupt_disable {
+                "I"
+            } else {
+                "."
+            },
+            if self.flag_zero { "Z" } else { "." },
+            if self.flag_carry { "C" } else { "." },
+        );
+
+        println!(
+            "{:04X}  {:02X} {:02X} {:02X}  {:<4}  A:{:02X} X:{:02X} Y:{:02X} P:{} SP:{:02X}",
+            pc,
+            op,
+            b1,
+            b2,
+            opcode_name,
+            self.register_a,
+            self.register_x,
+            self.register_y,
+            flags,
+            self.stack_pointer
+        );
     }
 
     pub fn load_rom(&mut self, path: &str) {
@@ -142,6 +209,69 @@ impl CPU {
         self.flag_zero = input == 0;
     }
 
+    fn ora(&mut self, input: u8) {
+        self.register_a |= input;
+        self.flag_negative = self.register_a >= 0x80;
+        self.flag_zero = self.register_a == 0;
+    }
+
+    fn and(&mut self, input: u8) {
+        self.register_a &= input;
+        self.flag_negative = self.register_a >= 0x80;
+        self.flag_zero = self.register_a == 0;
+    }
+
+    fn eor(&mut self, input: u8) {
+        self.register_a ^= input;
+        self.flag_negative = self.register_a >= 0x80;
+        self.flag_zero = self.register_a == 0;
+    }
+
+    fn adc(&mut self, input: u8) {
+        let int_sum = input as u16 + self.register_a as u16 + if self.flag_carry { 1 } else { 0 };
+        self.flag_overflow =
+            (!(self.register_a ^ input) & (self.register_a ^ int_sum as u8) & 0x80) != 0;
+        self.flag_carry = int_sum > 0xFF;
+        self.register_a = int_sum as u8;
+        self.flag_negative = (self.register_a & 0x80) != 0;
+        self.flag_zero = self.register_a == 0;
+    }
+
+    fn sbc(&mut self, input: u8) {
+        let borrow = if self.flag_carry { 0 } else { 1 };
+        let int_sum = self.register_a as i16 - input as i16 - borrow as i16;
+        self.flag_overflow =
+            ((self.register_a ^ input) & (self.register_a ^ int_sum as u8) & 0x80) != 0;
+        self.flag_carry = int_sum >= 0;
+        self.register_a = int_sum as u8;
+        self.flag_negative = (self.register_a & 0x80) != 0;
+        self.flag_zero = self.register_a == 0;
+    }
+
+    fn cmp(&mut self, input: u8) {
+        self.flag_carry = input <= self.register_a;
+        self.flag_zero = input == self.register_a;
+        self.flag_negative = self.register_a.wrapping_sub(input) > 127;
+    }
+
+    fn cpx(&mut self, input: u8) {
+        self.flag_carry = input <= self.register_x;
+        self.flag_zero = input == self.register_x;
+        self.flag_negative = self.register_x.wrapping_sub(input) > 127;
+    }
+
+    fn cpy(&mut self, input: u8) {
+        self.flag_carry = input <= self.register_y;
+        self.flag_zero = input == self.register_y;
+        self.flag_negative = self.register_y.wrapping_sub(input) > 127;
+    }
+
+    fn bit(&mut self, input: u8) {
+        self.flag_zero = (self.register_a & input) == 0;
+        self.flag_negative = (input & 0x80) != 0;
+        self.flag_overflow = (input & 0x40) != 0;
+    }
+
     pub fn reset(&mut self) {
         let pcl = self.read(0xFFFC);
         let pch = self.read(0xFFFD);
@@ -154,6 +284,7 @@ impl CPU {
     pub fn run(&mut self) {
         loop {
             let opcode = self.read(self.program_counter);
+            self.trace_logger(opcode);
             self.program_counter += 1;
 
             match opcode {
@@ -216,6 +347,36 @@ impl CPU {
                 0x6E => self.ror_absolute(),
                 0xE6 => self.inc_zero_page(),
                 0xEE => self.inc_absolute(),
+                0xC6 => self.dec_zero_page(),
+                0xCE => self.dec_absolute(),
+                0x09 => self.ora_a(),
+                0x05 => self.ora_zero_page(),
+                0x0D => self.ora_absolute(),
+                0x29 => self.and_a(),
+                0x25 => self.and_zero_page(),
+                0x2D => self.and_absolute(),
+                0x49 => self.eor_a(),
+                0x45 => self.eor_zero_page(),
+                0x4D => self.eor_absolute(),
+                0x69 => self.adc_a(),
+                0x65 => self.adc_zero_page(),
+                0x6D => self.adc_absolute(),
+                0xE9 => self.sbc_a(),
+                0xE5 => self.sbc_zero_page(),
+                0xED => self.sbc_absolute(),
+                0xC9 => self.cmp_a(),
+                0xC5 => self.cmp_zero_page(),
+                0xCD => self.cmp_absolute(),
+                0xE0 => self.cpx_a(),
+                0xE4 => self.cpx_zero_page(),
+                0xEC => self.cpx_absolute(),
+                0xC0 => self.cpy_a(),
+                0xC4 => self.cpy_zero_page(),
+                0xCC => self.cpy_absolute(),
+                0x00 => self.brk(),
+                0x40 => self.rti(),
+                0x24 => self.bit_zero_page(),
+                0x2C => self.bit_absolute(),
 
                 _ => todo!(),
             }
@@ -621,10 +782,171 @@ impl CPU {
     fn inc_zero_page(&mut self) {
         self.address_bus = self.fetch_byte() as u16;
         self.inc(self.address_bus, self.read(self.address_bus));
+        self.cycles = 5;
     }
     fn inc_absolute(&mut self) {
         self.absolute_address();
         self.inc(self.address_bus, self.read(self.address_bus));
+        self.cycles = 6;
     }
-    // todo dec
+    fn dec_zero_page(&mut self) {
+        self.address_bus = self.fetch_byte() as u16;
+        self.dec(self.address_bus, self.read(self.address_bus));
+        self.cycles = 5;
+    }
+    fn dec_absolute(&mut self) {
+        self.absolute_address();
+        self.dec(self.address_bus, self.read(self.address_bus));
+        self.cycles = 6;
+    }
+    fn ora_a(&mut self) {
+        let input = self.fetch_byte();
+        self.ora(input);
+        self.cycles = 2;
+    }
+    fn ora_zero_page(&mut self) {
+        let input = self.fetch_byte() as u16;
+        self.ora(self.read(input));
+        self.cycles = 3;
+    }
+    fn ora_absolute(&mut self) {
+        self.absolute_address();
+        self.ora(self.read(self.address_bus));
+        self.cycles = 4;
+    }
+    fn and_a(&mut self) {
+        let input = self.fetch_byte();
+        self.and(input);
+        self.cycles = 2;
+    }
+    fn and_zero_page(&mut self) {
+        let input = self.fetch_byte() as u16;
+        self.and(self.read(input));
+        self.cycles = 3;
+    }
+    fn and_absolute(&mut self) {
+        self.absolute_address();
+        self.and(self.read(self.address_bus));
+        self.cycles = 4;
+    }
+    fn eor_a(&mut self) {
+        let input = self.fetch_byte();
+        self.eor(input);
+        self.cycles = 2;
+    }
+    fn eor_zero_page(&mut self) {
+        let input = self.fetch_byte() as u16;
+        self.eor(self.read(input));
+        self.cycles = 3;
+    }
+    fn eor_absolute(&mut self) {
+        self.absolute_address();
+        self.eor(self.read(self.address_bus));
+        self.cycles = 4;
+    }
+    fn adc_a(&mut self) {
+        let input = self.fetch_byte();
+        self.adc(input);
+    }
+    fn adc_zero_page(&mut self) {
+        let input = self.fetch_byte() as u16;
+        self.adc(self.read(input));
+    }
+    fn adc_absolute(&mut self) {
+        self.absolute_address();
+        self.adc(self.read(self.address_bus));
+    }
+    fn sbc_a(&mut self) {
+        let input = self.fetch_byte();
+        self.sbc(input);
+    }
+    fn sbc_zero_page(&mut self) {
+        let input = self.fetch_byte() as u16;
+        self.sbc(self.read(input));
+    }
+    fn sbc_absolute(&mut self) {
+        self.absolute_address();
+        self.sbc(self.read(self.address_bus));
+    }
+    fn cmp_a(&mut self) {
+        let input = self.fetch_byte();
+        self.cmp(input);
+    }
+    fn cmp_zero_page(&mut self) {
+        let input = self.fetch_byte() as u16;
+        self.cmp(self.read(input));
+    }
+    fn cmp_absolute(&mut self) {
+        self.absolute_address();
+        self.cmp(self.read(self.address_bus));
+    }
+    fn cpx_a(&mut self) {
+        let input = self.fetch_byte();
+        self.cpx(input);
+    }
+    fn cpx_zero_page(&mut self) {
+        let input = self.fetch_byte() as u16;
+        self.cpx(self.read(input));
+    }
+    fn cpx_absolute(&mut self) {
+        self.absolute_address();
+        self.cpx(self.read(self.address_bus));
+    }
+    fn cpy_a(&mut self) {
+        let input = self.fetch_byte();
+        self.cpy(input);
+    }
+    fn cpy_zero_page(&mut self) {
+        let input = self.fetch_byte() as u16;
+        self.cpy(self.read(input));
+    }
+    fn cpy_absolute(&mut self) {
+        self.absolute_address();
+        self.cpy(self.read(self.address_bus));
+    }
+    fn brk(&mut self) {
+        self.program_counter += 1;
+        self.push((self.program_counter >> 8) as u8);
+        self.push(self.program_counter as u8);
+        let mut temp: u8 = 0;
+        temp += if self.flag_carry { 1 } else { 0 };
+        temp += if self.flag_zero { 2 } else { 0 };
+        temp += if self.flag_interrupt_disable { 4 } else { 0 };
+        temp += if self.flag_decimal { 8 } else { 0 };
+        temp += 0x10;
+        temp += 0x20;
+        temp += if self.flag_overflow { 0x40 } else { 0 };
+        temp += if self.flag_negative { 0x80 } else { 0 };
+        self.push(temp);
+        let low: u8 = self.read(0xFFFE);
+        let high: u8 = self.read(0xFFFF);
+        self.program_counter = ((high as u16) << 8) | (low as u16);
+        self.cycles = 7;
+    }
+    fn rti(&mut self) {
+        let temp = self.pull();
+        self.flag_carry = (temp & 0x01) != 0;
+        self.flag_zero = (temp & 0x02) != 0;
+        self.flag_interrupt_disable = (temp & 0x04) != 0;
+        self.flag_decimal = (temp & 0x08) != 0;
+        self.flag_overflow = (temp & 0x40) != 0;
+        self.flag_negative = (temp & 0x80) != 0;
+
+        let low = self.pull() as u16;
+        let high = self.pull() as u16;
+
+        self.program_counter = (high << 8) | low;
+
+        self.cycles = 6;
+    }
+    fn bit_zero_page(&mut self) {
+        let input = self.fetch_byte() as u16;
+        self.bit(self.read(input));
+        self.cycles = 3;
+    }
+    fn bit_absolute(&mut self) {
+        self.absolute_address();
+        self.bit(self.read(self.address_bus));
+        self.cycles = 4;
+    }
 }
