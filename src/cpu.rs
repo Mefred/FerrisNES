@@ -168,13 +168,32 @@ impl CPU {
     }
 
     fn zero_page_address_x_indexed(&mut self) {
-        self.address_bus = self.fetch_byte() as u16;
-        self.address_bus = self.address_bus.wrapping_add(self.register_x as u16);
+        let addr = self.fetch_byte();
+        self.address_bus = addr.wrapping_add(self.register_x) as u16;
     }
 
     fn zero_page_address_y_indexed(&mut self) {
-        self.address_bus = self.fetch_byte() as u16;
+        let addr = self.fetch_byte();
+        self.address_bus = addr.wrapping_add(self.register_y) as u16;
+    }
+
+    fn indirect_address_y_indexed(&mut self) {
+        let addr = self.fetch_byte();
+
+        let low = self.read(addr as u16) as u16;
+        let high = self.read(addr.wrapping_add(1) as u16) as u16;
+
+        self.address_bus = (high << 8) | low;
         self.address_bus = self.address_bus.wrapping_add(self.register_y as u16);
+    }
+
+    fn indirect_address_x_indexed(&mut self) {
+        let addr = self.fetch_byte() + self.register_x;
+
+        let low = self.read(addr as u16) as u16;
+        let high = self.read(addr.wrapping_add(1) as u16) as u16;
+
+        self.address_bus = (high << 8) | low;
     }
 
     fn asl(&mut self, address: u16, mut input: u8) {
@@ -314,15 +333,15 @@ impl CPU {
 
                 0xA0 => self.ldy_immediate(),
                 0xA4 => self.ldy_zero_page(),
-                0xAC => self.ldy_absolute(),
                 0xB4 => self.ldy_zero_page_x(),
-                0xBC => self.ldy_zero_page_x(), // done
+                0xAC => self.ldy_absolute(),
+                0xBC => self.ldy_absolute_x(),
 
                 0xA2 => self.ldx_immediate(),
                 0xA6 => self.ldx_zero_page(),
                 0xB6 => self.ldx_zero_page_y(),
                 0xAE => self.ldx_absolute(),
-                0xBE => self.ldx_absolute_y(), // done
+                0xBE => self.ldx_absolute_y(),
 
                 0xA9 => self.lda_immediate(),
                 0xA5 => self.lda_zero_page(),
@@ -331,7 +350,7 @@ impl CPU {
                 0xBD => self.lda_absolute_x(),
                 0xB9 => self.lda_absolute_y(),
                 0xA1 => self.lda_indirect_x(),
-                0xB1 => self.lda_indirect_y(), // done
+                0xB1 => self.lda_indirect_y(),
 
                 0x85 => self.sta_zero_page(),
                 0x95 => self.sta_zero_page_x(),
@@ -339,138 +358,176 @@ impl CPU {
                 0x9D => self.sta_absolute_x(),
                 0x99 => self.sta_absolute_y(),
                 0x81 => self.sta_indirect_x(),
-                0x91 => self.sta_indirect_y(), // done
+                0x91 => self.sta_indirect_y(),
 
                 0x86 => self.stx_zero_page(),
                 0x96 => self.stx_zero_page_y(),
-                0x8E => self.stx_absolute(), // done
+                0x8E => self.stx_absolute(),
 
                 0x84 => self.sty_zero_page(),
                 0x94 => self.sty_zero_page_x(),
-                0x8C => self.sty_absolute(), // done
+                0x8C => self.sty_absolute(),
 
-                0x10 => self.bpl(), // done
+                0x10 => self.bpl(),
 
-                0x30 => self.bmi(), // done
+                0x30 => self.bmi(),
 
-                0x50 => self.bvc(), // done
+                0x50 => self.bvc(),
 
-                0x70 => self.bvs(), // done
+                0x70 => self.bvs(),
 
-                0x90 => self.bcc(), // done
+                0x90 => self.bcc(),
 
-                0xB0 => self.bcs(), // done
+                0xB0 => self.bcs(),
 
-                0xD0 => self.bne(), // done
+                0xD0 => self.bne(),
 
-                0xF0 => self.beq(), // done
+                0xF0 => self.beq(),
 
-                0x48 => self.pha(), // done
+                0x48 => self.pha(),
 
-                0x68 => self.pla(), // done
+                0x68 => self.pla(),
 
-                0x20 => self.jsr_absolute(), // done
+                0x20 => self.jsr_absolute(),
 
-                0x60 => self.rts_implied(), // done
+                0x60 => self.rts_implied(),
 
                 0x4C => self.jmp_absoute(),
-                0x6C => self.jmp_indirect(), // done
+                0x6C => self.jmp_indirect(),
 
-                0xE8 => self.inx(), // done
+                0xE8 => self.inx(),
 
-                0xCA => self.dex(), // done
+                0xCA => self.dex(),
 
-                0xC8 => self.iny(), // done
+                0xC8 => self.iny(),
 
-                0x88 => self.dey(), // done
+                0x88 => self.dey(),
 
-                0xAA => self.tax(), // done
+                0xAA => self.tax(),
 
-                0x8A => self.txa(), // done
+                0x8A => self.txa(),
 
-                0xA8 => self.tay(), // done
+                0xA8 => self.tay(),
 
-                0x98 => self.tya(), // done
+                0x98 => self.tya(),
 
-                0x9A => self.txs(), // done
+                0x9A => self.txs(),
 
-                0xBA => self.tsx(), // done
+                0xBA => self.tsx(),
 
-                0x38 => self.sec(), // done
+                0x38 => self.sec(),
 
-                0x18 => self.clc(), // done
+                0x18 => self.clc(),
 
-                0xB8 => self.clv(), // done
+                0xB8 => self.clv(),
 
-                0x78 => self.sei(), // done
+                0x78 => self.sei(),
 
-                0x58 => self.cli(), // done
+                0x58 => self.cli(),
 
-                0xF8 => self.sed(), // done
+                0xF8 => self.sed(),
 
-                0xD8 => self.cld(), // done
+                0xD8 => self.cld(),
 
-                0xEA => self.cycles = 2, // done
+                0xEA => self.cycles = 2,
 
-                0x08 => self.php(), // done
+                0x08 => self.php(),
 
-                0x28 => self.plp(), // done
+                0x28 => self.plp(),
 
                 0x0A => self.asl_accumulator(),
                 0x06 => self.asl_zero_page(),
                 0x16 => self.asl_zero_page_x(),
                 0x0E => self.asl_absolute(),
-                0x1E => self.asl_absolute_x(), // done
+                0x1E => self.asl_absolute_x(),
 
                 0x2A => self.rol_accumulator(),
                 0x26 => self.rol_zero_page(),
                 0x36 => self.rol_zero_page_x(),
                 0x2E => self.rol_absolute(),
-                0x3E => self.rol_absolute_x(), // done
+                0x3E => self.rol_absolute_x(),
 
-                0x4A => self.lsr_a(),
+                0x4A => self.lsr_accumulator(),
                 0x46 => self.lsr_zero_page(),
+                0x56 => self.lsr_zero_page_x(),
                 0x4E => self.lsr_absolute(),
+                0x5E => self.lsr_absolute_x(),
 
-                0x6A => self.ror_a(),
+                0x6A => self.ror_accumulator(),
                 0x66 => self.ror_zero_page(),
+                0x76 => self.ror_zero_page_x(),
                 0x6E => self.ror_absolute(),
+                0x7E => self.ror_absolute_x(),
 
                 0xE6 => self.inc_zero_page(),
+                0xF6 => self.inc_zero_page_x(),
                 0xEE => self.inc_absolute(),
+                0xFE => self.inc_absolute_x(),
 
                 0xC6 => self.dec_zero_page(),
+                0xD6 => self.dec_zero_page_x(),
                 0xCE => self.dec_absolute(),
+                0xDE => self.dec_absolute_x(),
 
-                0x09 => self.ora_a(),
+                0x09 => self.ora_immediate(),
                 0x05 => self.ora_zero_page(),
+                0x15 => self.ora_zero_page_x(),
                 0x0D => self.ora_absolute(),
+                0x1D => self.ora_absolute_x(),
+                0x19 => self.ora_absolute_y(),
+                0x01 => self.ora_indirect_x(),
+                0x11 => self.ora_indirect_y(),
 
-                0x29 => self.and_a(),
+                0x29 => self.and_immediate(),
                 0x25 => self.and_zero_page(),
+                0x35 => self.and_zero_page_x(),
                 0x2D => self.and_absolute(),
+                0x3D => self.and_absolute_x(),
+                0x39 => self.and_absolute_y(),
+                0x21 => self.and_indirect_x(),
+                0x31 => self.and_indirect_y(),
 
-                0x49 => self.eor_a(),
+                0x49 => self.eor_immediate(),
                 0x45 => self.eor_zero_page(),
+                0x55 => self.eor_zero_page_x(),
                 0x4D => self.eor_absolute(),
+                0x5D => self.eor_absolute_x(),
+                0x59 => self.eor_absolute_y(),
+                0x41 => self.eor_indirect_x(),
+                0x51 => self.eor_indirect_y(),
 
-                0x69 => self.adc_a(),
+                0x69 => self.adc_immediate(),
                 0x65 => self.adc_zero_page(),
+                0x75 => self.adc_zero_page_x(),
                 0x6D => self.adc_absolute(),
+                0x7D => self.adc_absolute_x(),
+                0x79 => self.adc_absolute_y(),
+                0x61 => self.adc_indirect_x(),
+                0x71 => self.adc_indirect_y(),
 
-                0xE9 => self.sbc_a(),
+                0xE9 => self.sbc_immediate(),
                 0xE5 => self.sbc_zero_page(),
+                0xF5 => self.sbc_zero_page_x(),
                 0xED => self.sbc_absolute(),
+                0xFD => self.sbc_absolute_x(),
+                0xF9 => self.sbc_absolute_y(),
+                0xE1 => self.sbc_indirect_x(),
+                0xF1 => self.sbc_indirect_y(),
 
-                0xC9 => self.cmp_a(),
+                0xC9 => self.cmp_immediate(),
                 0xC5 => self.cmp_zero_page(),
+                0xD5 => self.cmp_zero_page_x(),
                 0xCD => self.cmp_absolute(),
+                0xDD => self.cmp_absolute_x(),
+                0xD9 => self.cmp_absolute_y(),
+                0xC1 => self.cmp_indirect_x(),
+                0xD1 => self.cmp_indirect_y(),
 
-                0xE0 => self.cpx_a(),
+                0xE0 => self.cpx_immediate(),
                 0xE4 => self.cpx_zero_page(),
                 0xEC => self.cpx_absolute(),
 
-                0xC0 => self.cpy_a(),
+                0xC0 => self.cpy_immediate(),
                 0xC4 => self.cpy_zero_page(),
                 0xCC => self.cpy_absolute(),
 
@@ -494,6 +551,35 @@ impl CPU {
         self.flag_zero = self.register_y == 0;
         self.flag_negative = self.register_y > 127;
     }
+    fn ldy_zero_page(&mut self) {
+        self.address_bus = self.fetch_byte() as u16;
+
+        self.register_y = self.read(self.address_bus);
+
+        self.cycles = 3;
+    }
+    fn ldy_zero_page_x(&mut self) {
+        self.zero_page_address_x_indexed();
+
+        self.register_y = self.read(self.address_bus);
+
+        self.cycles = 4;
+    }
+    fn ldy_absolute(&mut self) {
+        self.absolute_address();
+
+        self.register_y = self.read(self.address_bus);
+
+        self.cycles = 4;
+    }
+    fn ldy_absolute_x(&mut self) {
+        self.absolute_address_x_indexed();
+
+        self.register_y = self.read(self.address_bus);
+
+        self.cycles = 4;
+    }
+
     fn ldx_immediate(&mut self) {
         self.register_x = self.fetch_byte();
 
@@ -502,6 +588,35 @@ impl CPU {
         self.flag_zero = self.register_x == 0;
         self.flag_negative = self.register_x > 127;
     }
+    fn ldx_zero_page(&mut self) {
+        self.address_bus = self.fetch_byte() as u16;
+
+        self.register_x = self.read(self.address_bus);
+
+        self.cycles = 3;
+    }
+    fn ldx_zero_page_y(&mut self) {
+        self.zero_page_address_y_indexed();
+
+        self.register_x = self.read(self.address_bus);
+
+        self.cycles = 4;
+    }
+    fn ldx_absolute(&mut self) {
+        self.absolute_address();
+
+        self.register_x = self.read(self.address_bus);
+
+        self.cycles = 4;
+    }
+    fn ldx_absolute_y(&mut self) {
+        self.absolute_address_y_indexed();
+
+        self.register_x = self.read(self.address_bus);
+
+        self.cycles = 4;
+    }
+
     fn lda_immediate(&mut self) {
         self.register_a = self.fetch_byte();
 
@@ -516,6 +631,13 @@ impl CPU {
 
         self.cycles = 3;
     }
+    fn lda_zero_page_x(&mut self) {
+        self.zero_page_address_x_indexed();
+
+        self.register_a = self.read(self.address_bus);
+
+        self.cycles = 4;
+    }
     fn lda_absolute(&mut self) {
         let low = self.fetch_byte() as u16;
         let high = self.fetch_byte() as u16;
@@ -526,11 +648,46 @@ impl CPU {
 
         self.cycles = 4;
     }
+    fn lda_absolute_x(&mut self) {
+        self.absolute_address_x_indexed();
+
+        self.register_a = self.read(self.address_bus);
+
+        self.cycles = 4;
+    }
+    fn lda_absolute_y(&mut self) {
+        self.absolute_address_y_indexed();
+
+        self.register_a = self.read(self.address_bus);
+
+        self.cycles = 4;
+    }
+    fn lda_indirect_x(&mut self) {
+        self.indirect_address_x_indexed();
+
+        self.register_a = self.read(self.address_bus);
+
+        self.cycles = 6;
+    }
+    fn lda_indirect_y(&mut self) {
+        self.indirect_address_y_indexed();
+
+        self.register_a = self.read(self.address_bus);
+
+        self.cycles = 5;
+    }
+
     fn sta_zero_page(&mut self) {
         let addr = self.fetch_byte() as u16;
         self.write(addr, self.register_a);
 
         self.cycles = 3;
+    }
+    fn sta_zero_page_x(&mut self) {
+        self.zero_page_address_x_indexed();
+        self.write(self.address_bus, self.register_a);
+
+        self.cycles = 4;
     }
     fn sta_absolute(&mut self) {
         let address_low = self.fetch_byte() as u16;
@@ -539,11 +696,42 @@ impl CPU {
 
         self.cycles = 4;
     }
+    fn sta_absolute_x(&mut self) {
+        self.absolute_address_x_indexed();
+        self.write(self.address_bus, self.register_a);
+
+        self.cycles = 4;
+    }
+    fn sta_absolute_y(&mut self) {
+        self.absolute_address_y_indexed();
+        self.write(self.address_bus, self.register_a);
+
+        self.cycles = 4;
+    }
+    fn sta_indirect_x(&mut self) {
+        self.indirect_address_x_indexed();
+        self.write(self.address_bus, self.register_a);
+
+        self.cycles = 6;
+    }
+    fn sta_indirect_y(&mut self) {
+        self.indirect_address_y_indexed();
+        self.write(self.address_bus, self.register_a);
+
+        self.cycles = 5;
+    }
+
     fn stx_zero_page(&mut self) {
         let addr = self.fetch_byte() as u16;
         self.write(addr, self.register_x);
 
         self.cycles = 3;
+    }
+    fn stx_zero_page_y(&mut self) {
+        self.zero_page_address_y_indexed();
+        self.write(self.address_bus, self.register_x);
+
+        self.cycles = 4;
     }
     fn stx_absolute(&mut self) {
         let address_low = self.fetch_byte() as u16;
@@ -552,11 +740,18 @@ impl CPU {
 
         self.cycles = 4;
     }
+
     fn sty_zero_page(&mut self) {
         let addr = self.fetch_byte() as u16;
         self.write(addr, self.register_y);
 
         self.cycles = 3;
+    }
+    fn sty_zero_page_x(&mut self) {
+        self.zero_page_address_x_indexed();
+        self.write(self.address_bus, self.register_y);
+
+        self.cycles = 4;
     }
     fn sty_absolute(&mut self) {
         let address_low = self.fetch_byte() as u16;
@@ -565,6 +760,7 @@ impl CPU {
 
         self.cycles = 4;
     }
+
     fn bpl(&mut self) {
         let offset = self.fetch_byte() as i8;
         if !self.flag_negative {
@@ -574,6 +770,7 @@ impl CPU {
             self.cycles = 2
         }
     }
+
     fn bmi(&mut self) {
         let offset = self.fetch_byte() as i8;
         if self.flag_negative {
@@ -583,6 +780,7 @@ impl CPU {
             self.cycles = 2
         }
     }
+
     fn bvc(&mut self) {
         let offset = self.fetch_byte() as i8;
         if !self.flag_overflow {
@@ -592,6 +790,7 @@ impl CPU {
             self.cycles = 2
         }
     }
+
     fn bvs(&mut self) {
         let offset = self.fetch_byte() as i8;
         if self.flag_overflow {
@@ -601,6 +800,7 @@ impl CPU {
             self.cycles = 2
         }
     }
+
     fn bcc(&mut self) {
         let offset = self.fetch_byte() as i8;
         if !self.flag_carry {
@@ -610,6 +810,7 @@ impl CPU {
             self.cycles = 2
         }
     }
+
     fn bcs(&mut self) {
         let offset = self.fetch_byte() as i8;
         if self.flag_carry {
@@ -619,6 +820,7 @@ impl CPU {
             self.cycles = 2
         }
     }
+
     fn bne(&mut self) {
         let offset = self.fetch_byte() as i8;
         if !self.flag_zero {
@@ -628,6 +830,7 @@ impl CPU {
             self.cycles = 2
         }
     }
+
     fn beq(&mut self) {
         let offset = self.fetch_byte() as i8;
         if self.flag_zero {
@@ -637,11 +840,13 @@ impl CPU {
             self.cycles = 2
         }
     }
+
     fn pha(&mut self) {
         self.push(self.register_a);
 
         self.cycles = 3;
     }
+
     fn pla(&mut self) {
         self.register_a = self.pull();
 
@@ -650,6 +855,7 @@ impl CPU {
 
         self.cycles = 4
     }
+
     fn jsr_absolute(&mut self) {
         let low = self.fetch_byte() as u16;
         let high = self.fetch_byte() as u16;
@@ -658,6 +864,7 @@ impl CPU {
         self.program_counter = high * 256 + low;
         self.cycles = 6;
     }
+
     fn rts_implied(&mut self) {
         let low = self.pull() as u16;
         let high = self.pull() as u16;
@@ -665,12 +872,34 @@ impl CPU {
         self.program_counter += 1;
         self.cycles = 6;
     }
+
     fn jmp_absoute(&mut self) {
         let low = self.fetch_byte() as u16;
         let high = self.fetch_byte() as u16;
         self.program_counter = high * 256 + low;
         self.cycles = 3;
     }
+    fn jmp_indirect(&mut self) {
+        let low = self.fetch_byte() as u16;
+        let high = self.fetch_byte() as u16;
+
+        let pointer = (high << 8) | low;
+
+        let target_low = self.read(pointer) as u16;
+
+        let high_addr = if (pointer & 0x00FF) == 0x00FF {
+            pointer & 0xFF00
+        } else {
+            pointer + 1
+        };
+
+        let target_high = self.read(high_addr) as u16;
+
+        self.program_counter = (target_high << 8) | target_low;
+
+        self.cycles = 5;
+    }
+
     fn inx(&mut self) {
         self.register_x = self.register_x.wrapping_add(1);
 
@@ -679,6 +908,7 @@ impl CPU {
         self.flag_zero = self.register_x == 0;
         self.flag_negative = self.register_x > 127;
     }
+
     fn dex(&mut self) {
         self.register_x = self.register_x.wrapping_sub(1);
 
@@ -687,6 +917,7 @@ impl CPU {
         self.flag_zero = self.register_x == 0;
         self.flag_negative = self.register_x > 127;
     }
+
     fn iny(&mut self) {
         self.register_y = self.register_y.wrapping_add(1);
 
@@ -695,6 +926,7 @@ impl CPU {
         self.flag_zero = self.register_y == 0;
         self.flag_negative = self.register_y > 127;
     }
+
     fn dey(&mut self) {
         self.register_y = self.register_y.wrapping_sub(1);
 
@@ -703,6 +935,7 @@ impl CPU {
         self.flag_zero = self.register_y == 0;
         self.flag_negative = self.register_y > 127;
     }
+
     fn tax(&mut self) {
         self.register_x = self.register_a;
 
@@ -711,6 +944,7 @@ impl CPU {
         self.flag_zero = self.register_x == 0;
         self.flag_negative = self.register_x > 127;
     }
+
     fn txa(&mut self) {
         self.register_a = self.register_x;
 
@@ -719,6 +953,7 @@ impl CPU {
         self.flag_zero = self.register_a == 0;
         self.flag_negative = self.register_a > 127;
     }
+
     fn tay(&mut self) {
         self.register_y = self.register_a;
 
@@ -727,6 +962,7 @@ impl CPU {
         self.flag_zero = self.register_y == 0;
         self.flag_negative = self.register_y > 127;
     }
+
     fn tya(&mut self) {
         self.register_a = self.register_y;
 
@@ -735,11 +971,13 @@ impl CPU {
         self.flag_zero = self.register_a == 0;
         self.flag_negative = self.register_a > 127;
     }
+
     fn txs(&mut self) {
         self.stack_pointer = self.register_x;
 
         self.cycles = 2;
     }
+
     fn tsx(&mut self) {
         self.register_x = self.stack_pointer;
 
@@ -748,41 +986,49 @@ impl CPU {
         self.flag_zero = self.register_x == 0;
         self.flag_negative = self.register_x > 127;
     }
+
     fn sec(&mut self) {
         self.flag_carry = true;
 
         self.cycles = 2;
     }
+
     fn clc(&mut self) {
         self.flag_carry = false;
 
         self.cycles = 2;
     }
+
     fn clv(&mut self) {
         self.flag_overflow = false;
 
         self.cycles = 2;
     }
+
     fn sei(&mut self) {
         self.flag_interrupt_disable = true;
 
         self.cycles = 2;
     }
+
     fn cli(&mut self) {
         self.flag_interrupt_disable = false;
 
         self.cycles = 2;
     }
+
     fn sed(&mut self) {
         self.flag_decimal = true;
 
         self.cycles = 2;
     }
+
     fn cld(&mut self) {
         self.flag_decimal = false;
 
         self.cycles = 2;
     }
+
     fn php(&mut self) {
         let mut temp: u8 = 0;
         temp += if self.flag_carry { 1 } else { 0 };
@@ -796,6 +1042,7 @@ impl CPU {
         self.push(temp);
         self.cycles = 3;
     }
+
     fn plp(&mut self) {
         let temp = self.pull();
         self.flag_carry = (temp & 1) != 0;
@@ -806,6 +1053,7 @@ impl CPU {
         self.flag_negative = (temp & 0x80) != 0;
         self.cycles = 3;
     }
+
     fn asl_accumulator(&mut self) {
         self.flag_carry = self.register_a > 127;
         self.register_a <<= 1;
@@ -818,11 +1066,22 @@ impl CPU {
         self.asl(self.address_bus, self.read(self.address_bus));
         self.cycles = 5;
     }
+    fn asl_zero_page_x(&mut self) {
+        self.zero_page_address_x_indexed();
+        self.asl(self.address_bus, self.read(self.address_bus));
+        self.cycles = 6;
+    }
     fn asl_absolute(&mut self) {
         self.absolute_address();
         self.asl(self.address_bus, self.read(self.address_bus));
         self.cycles = 6;
     }
+    fn asl_absolute_x(&mut self) {
+        self.absolute_address_x_indexed();
+        self.asl(self.address_bus, self.read(self.address_bus));
+        self.cycles = 7;
+    }
+
     fn rol_accumulator(&mut self) {
         let future_flag_carry = self.register_a >= 0x80;
         self.register_a <<= 1;
@@ -839,12 +1098,23 @@ impl CPU {
         self.rol(self.address_bus, self.read(self.address_bus));
         self.cycles = 5;
     }
+    fn rol_zero_page_x(&mut self) {
+        self.zero_page_address_x_indexed();
+        self.rol(self.address_bus, self.read(self.address_bus));
+        self.cycles = 6;
+    }
     fn rol_absolute(&mut self) {
         self.absolute_address();
         self.rol(self.address_bus, self.read(self.address_bus));
         self.cycles = 6;
     }
-    fn lsr_a(&mut self) {
+    fn rol_absolute_x(&mut self) {
+        self.absolute_address_x_indexed();
+        self.rol(self.address_bus, self.read(self.address_bus));
+        self.cycles = 7;
+    }
+
+    fn lsr_accumulator(&mut self) {
         self.flag_carry = (self.register_a & 0x01) != 0;
         self.register_a >>= 1;
         self.flag_zero = self.register_a == 0;
@@ -856,12 +1126,23 @@ impl CPU {
         self.lsr(self.address_bus, self.read(self.address_bus));
         self.cycles = 5;
     }
+    fn lsr_zero_page_x(&mut self) {
+        self.zero_page_address_x_indexed();
+        self.lsr(self.address_bus, self.read(self.address_bus));
+        self.cycles = 6;
+    }
     fn lsr_absolute(&mut self) {
         self.absolute_address();
         self.lsr(self.address_bus, self.read(self.address_bus));
         self.cycles = 6;
     }
-    fn ror_a(&mut self) {
+    fn lsr_absolute_x(&mut self) {
+        self.absolute_address_x_indexed();
+        self.lsr(self.address_bus, self.read(self.address_bus));
+        self.cycles = 7;
+    }
+
+    fn ror_accumulator(&mut self) {
         let future_flag_carry = (self.register_a & 0x01) != 0;
         self.register_a >>= 1;
         if self.flag_carry {
@@ -877,32 +1158,65 @@ impl CPU {
         self.ror(self.address_bus, self.read(self.address_bus));
         self.cycles = 5;
     }
+    fn ror_zero_page_x(&mut self) {
+        self.zero_page_address_x_indexed();
+        self.ror(self.address_bus, self.read(self.address_bus));
+        self.cycles = 6;
+    }
     fn ror_absolute(&mut self) {
         self.absolute_address();
         self.ror(self.address_bus, self.read(self.address_bus));
         self.cycles = 6;
     }
+    fn ror_absolute_x(&mut self) {
+        self.absolute_address_x_indexed();
+        self.ror(self.address_bus, self.read(self.address_bus));
+        self.cycles = 7;
+    }
+
     fn inc_zero_page(&mut self) {
         self.address_bus = self.fetch_byte() as u16;
         self.inc(self.address_bus, self.read(self.address_bus));
         self.cycles = 5;
+    }
+    fn inc_zero_page_x(&mut self) {
+        self.zero_page_address_x_indexed();
+        self.inc(self.address_bus, self.read(self.address_bus));
+        self.cycles = 6;
     }
     fn inc_absolute(&mut self) {
         self.absolute_address();
         self.inc(self.address_bus, self.read(self.address_bus));
         self.cycles = 6;
     }
+    fn inc_absolute_x(&mut self) {
+        self.absolute_address_x_indexed();
+        self.inc(self.address_bus, self.read(self.address_bus));
+        self.cycles = 7;
+    }
+
     fn dec_zero_page(&mut self) {
         self.address_bus = self.fetch_byte() as u16;
         self.dec(self.address_bus, self.read(self.address_bus));
         self.cycles = 5;
+    }
+    fn dec_zero_page_x(&mut self) {
+        self.zero_page_address_x_indexed();
+        self.dec(self.address_bus, self.read(self.address_bus));
+        self.cycles = 6;
     }
     fn dec_absolute(&mut self) {
         self.absolute_address();
         self.dec(self.address_bus, self.read(self.address_bus));
         self.cycles = 6;
     }
-    fn ora_a(&mut self) {
+    fn dec_absolute_x(&mut self) {
+        self.absolute_address_x_indexed();
+        self.dec(self.address_bus, self.read(self.address_bus));
+        self.cycles = 7;
+    }
+
+    fn ora_immediate(&mut self) {
         let input = self.fetch_byte();
         self.ora(input);
         self.cycles = 2;
@@ -912,12 +1226,38 @@ impl CPU {
         self.ora(self.read(input));
         self.cycles = 3;
     }
+    fn ora_zero_page_x(&mut self) {
+        self.zero_page_address_x_indexed();
+        self.ora(self.read(self.address_bus));
+        self.cycles = 4;
+    }
     fn ora_absolute(&mut self) {
         self.absolute_address();
         self.ora(self.read(self.address_bus));
         self.cycles = 4;
     }
-    fn and_a(&mut self) {
+    fn ora_absolute_x(&mut self) {
+        self.absolute_address_x_indexed();
+        self.ora(self.read(self.address_bus));
+        self.cycles = 4;
+    }
+    fn ora_absolute_y(&mut self) {
+        self.absolute_address_y_indexed();
+        self.ora(self.read(self.address_bus));
+        self.cycles = 4;
+    }
+    fn ora_indirect_x(&mut self) {
+        self.indirect_address_x_indexed();
+        self.ora(self.read(self.address_bus));
+        self.cycles = 6;
+    }
+    fn ora_indirect_y(&mut self) {
+        self.indirect_address_y_indexed();
+        self.ora(self.read(self.address_bus));
+        self.cycles = 5;
+    }
+
+    fn and_immediate(&mut self) {
         let input = self.fetch_byte();
         self.and(input);
         self.cycles = 2;
@@ -927,12 +1267,38 @@ impl CPU {
         self.and(self.read(input));
         self.cycles = 3;
     }
+    fn and_zero_page_x(&mut self) {
+        self.zero_page_address_x_indexed();
+        self.and(self.read(self.address_bus));
+        self.cycles = 4;
+    }
     fn and_absolute(&mut self) {
         self.absolute_address();
         self.and(self.read(self.address_bus));
         self.cycles = 4;
     }
-    fn eor_a(&mut self) {
+    fn and_absolute_x(&mut self) {
+        self.absolute_address_x_indexed();
+        self.and(self.read(self.address_bus));
+        self.cycles = 4;
+    }
+    fn and_absolute_y(&mut self) {
+        self.absolute_address_y_indexed();
+        self.and(self.read(self.address_bus));
+        self.cycles = 4;
+    }
+    fn and_indirect_x(&mut self) {
+        self.indirect_address_x_indexed();
+        self.and(self.read(self.address_bus));
+        self.cycles = 6;
+    }
+    fn and_indirect_y(&mut self) {
+        self.indirect_address_y_indexed();
+        self.and(self.read(self.address_bus));
+        self.cycles = 5;
+    }
+
+    fn eor_immediate(&mut self) {
         let input = self.fetch_byte();
         self.eor(input);
         self.cycles = 2;
@@ -942,71 +1308,192 @@ impl CPU {
         self.eor(self.read(input));
         self.cycles = 3;
     }
+    fn eor_zero_page_x(&mut self) {
+        self.zero_page_address_x_indexed();
+        self.eor(self.read(self.address_bus));
+        self.cycles = 4;
+    }
     fn eor_absolute(&mut self) {
         self.absolute_address();
         self.eor(self.read(self.address_bus));
         self.cycles = 4;
     }
-    fn adc_a(&mut self) {
+    fn eor_absolute_x(&mut self) {
+        self.absolute_address_x_indexed();
+        self.eor(self.read(self.address_bus));
+        self.cycles = 4;
+    }
+    fn eor_absolute_y(&mut self) {
+        self.absolute_address_y_indexed();
+        self.eor(self.read(self.address_bus));
+        self.cycles = 4;
+    }
+    fn eor_indirect_x(&mut self) {
+        self.indirect_address_x_indexed();
+        self.eor(self.read(self.address_bus));
+        self.cycles = 6;
+    }
+    fn eor_indirect_y(&mut self) {
+        self.indirect_address_y_indexed();
+        self.eor(self.read(self.address_bus));
+        self.cycles = 5;
+    }
+
+    fn adc_immediate(&mut self) {
         let input = self.fetch_byte();
         self.adc(input);
+        self.cycles = 2;
     }
     fn adc_zero_page(&mut self) {
         let input = self.fetch_byte() as u16;
         self.adc(self.read(input));
+        self.cycles = 3;
+    }
+    fn adc_zero_page_x(&mut self) {
+        self.zero_page_address_x_indexed();
+        self.adc(self.read(self.address_bus));
+        self.cycles = 4;
     }
     fn adc_absolute(&mut self) {
         self.absolute_address();
         self.adc(self.read(self.address_bus));
+        self.cycles = 4;
     }
-    fn sbc_a(&mut self) {
+    fn adc_absolute_x(&mut self) {
+        self.absolute_address_x_indexed();
+        self.adc(self.read(self.address_bus));
+        self.cycles = 4;
+    }
+    fn adc_absolute_y(&mut self) {
+        self.absolute_address_y_indexed();
+        self.adc(self.read(self.address_bus));
+        self.cycles = 4;
+    }
+    fn adc_indirect_x(&mut self) {
+        self.indirect_address_x_indexed();
+        self.adc(self.read(self.address_bus));
+        self.cycles = 6;
+    }
+    fn adc_indirect_y(&mut self) {
+        self.indirect_address_y_indexed();
+        self.adc(self.read(self.address_bus));
+        self.cycles = 5;
+    }
+
+    fn sbc_immediate(&mut self) {
         let input = self.fetch_byte();
         self.sbc(input);
+        self.cycles = 2;
     }
     fn sbc_zero_page(&mut self) {
         let input = self.fetch_byte() as u16;
         self.sbc(self.read(input));
+        self.cycles = 3;
+    }
+    fn sbc_zero_page_x(&mut self) {
+        self.zero_page_address_x_indexed();
+        self.sbc(self.read(self.address_bus));
+        self.cycles = 4;
     }
     fn sbc_absolute(&mut self) {
         self.absolute_address();
         self.sbc(self.read(self.address_bus));
+        self.cycles = 4;
     }
-    fn cmp_a(&mut self) {
+    fn sbc_absolute_x(&mut self) {
+        self.absolute_address_x_indexed();
+        self.sbc(self.read(self.address_bus));
+        self.cycles = 4;
+    }
+    fn sbc_absolute_y(&mut self) {
+        self.absolute_address_y_indexed();
+        self.sbc(self.read(self.address_bus));
+        self.cycles = 4;
+    }
+    fn sbc_indirect_x(&mut self) {
+        self.indirect_address_x_indexed();
+        self.sbc(self.read(self.address_bus));
+        self.cycles = 6;
+    }
+    fn sbc_indirect_y(&mut self) {
+        self.indirect_address_y_indexed();
+        self.sbc(self.read(self.address_bus));
+        self.cycles = 5;
+    }
+
+    fn cmp_immediate(&mut self) {
         let input = self.fetch_byte();
         self.cmp(input);
+        self.cycles = 2;
     }
     fn cmp_zero_page(&mut self) {
         let input = self.fetch_byte() as u16;
         self.cmp(self.read(input));
+        self.cycles = 3;
+    }
+    fn cmp_zero_page_x(&mut self) {
+        self.zero_page_address_x_indexed();
+        self.cmp(self.read(self.address_bus));
+        self.cycles = 4;
     }
     fn cmp_absolute(&mut self) {
         self.absolute_address();
         self.cmp(self.read(self.address_bus));
+        self.cycles = 4;
     }
-    fn cpx_a(&mut self) {
+    fn cmp_absolute_x(&mut self) {
+        self.absolute_address_x_indexed();
+        self.cmp(self.read(self.address_bus));
+        self.cycles = 4;
+    }
+    fn cmp_absolute_y(&mut self) {
+        self.absolute_address_y_indexed();
+        self.cmp(self.read(self.address_bus));
+        self.cycles = 4;
+    }
+    fn cmp_indirect_x(&mut self) {
+        self.indirect_address_x_indexed();
+        self.cmp(self.read(self.address_bus));
+        self.cycles = 6;
+    }
+    fn cmp_indirect_y(&mut self) {
+        self.indirect_address_y_indexed();
+        self.cmp(self.read(self.address_bus));
+        self.cycles = 5;
+    }
+
+    fn cpx_immediate(&mut self) {
         let input = self.fetch_byte();
         self.cpx(input);
+        self.cycles = 2;
     }
     fn cpx_zero_page(&mut self) {
         let input = self.fetch_byte() as u16;
         self.cpx(self.read(input));
+        self.cycles = 3;
     }
     fn cpx_absolute(&mut self) {
         self.absolute_address();
         self.cpx(self.read(self.address_bus));
+        self.cycles = 4;
     }
-    fn cpy_a(&mut self) {
+
+    fn cpy_immediate(&mut self) {
         let input = self.fetch_byte();
         self.cpy(input);
+        self.cycles = 2;
     }
     fn cpy_zero_page(&mut self) {
         let input = self.fetch_byte() as u16;
         self.cpy(self.read(input));
+        self.cycles = 3;
     }
     fn cpy_absolute(&mut self) {
         self.absolute_address();
         self.cpy(self.read(self.address_bus));
+        self.cycles = 4;
     }
+
     fn brk(&mut self) {
         self.program_counter += 1;
         self.push((self.program_counter >> 8) as u8);
@@ -1026,6 +1513,7 @@ impl CPU {
         self.program_counter = ((high as u16) << 8) | (low as u16);
         self.cycles = 7;
     }
+
     fn rti(&mut self) {
         let temp = self.pull();
         self.flag_carry = (temp & 0x01) != 0;
@@ -1042,6 +1530,7 @@ impl CPU {
 
         self.cycles = 6;
     }
+
     fn bit_zero_page(&mut self) {
         let input = self.fetch_byte() as u16;
         self.bit(self.read(input));
